@@ -2,24 +2,16 @@ package prizecalc.payout;
 
 import java.util.*;
 
-public class TieredPayoutCalculator implements PayoutCalculator {
+public class TieredPayoutCalculator {
 
-    private final List<Double> top3Percentages;
+    public TieredPayoutCalculator() {
 
-    public TieredPayoutCalculator(List<Double> top3Percentages) {
-        if (top3Percentages.size() != 3) {
-            throw new IllegalArgumentException("Provide exactly 3 percentages for top 3 winners.");
-        }
-        double total = top3Percentages.stream().mapToDouble(Double::doubleValue).sum();
-        if (total >= 100.0) {
-            throw new IllegalArgumentException("Top 3 percentages must sum to less than 100.");
-        }
-        this.top3Percentages = top3Percentages;
     }
 
-    @Override
-    public double calculate(int totalPlayers, double totalPrize) {
-        int topHalf = (int) Math.ceil(totalPlayers / 2.0);
+    public static double calculate(int totalPlayers, double totalPrize) {
+
+        return 0;
+        /*int topHalf = (int) Math.ceil(totalPlayers / 2.0);
         int remainingPlayers = topHalf - 3;
 
         List<Integer> tierSizes = new ArrayList<>(List.of(1, 1, 1));
@@ -71,7 +63,7 @@ public class TieredPayoutCalculator implements PayoutCalculator {
         System.out.printf("  💡 Unallocated remainder: $%.2f%n", remainder);
         System.out.printf("  ⚠️ Unawarded due to rounding: $%.2f%n", roundingLoss);
 
-        return totalUsed;
+        return totalUsed;*/
     }
 
     private String ordinal(int i) {
