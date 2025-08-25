@@ -1,9 +1,6 @@
 package prizecalc;
 
-import prizecalc.payout.PayoutCalculator;
-import prizecalc.payout.EqualSplitCalculator;
 import prizecalc.payout.TieredPayoutCalculator;
-import prizecalc.payout.WinnerTakesAllCalculator;
 
 import java.util.*;
 
@@ -53,7 +50,7 @@ public class PrizePayoutApp {
                 maxRound = readPositiveDouble(scanner);
             }
 
-            double totalPrize = CalcPot(playerCount, entryPrice, minPrize, extraPrize, baseCost, perPlayerCost, thresholdRounding, maxRound);
+            double totalPrize = calcPot(playerCount, entryPrice, minPrize, extraPrize, baseCost, perPlayerCost, thresholdRounding, maxRound);
             System.out.println("Total pot: $" + totalPrize + "\n");
 
             int prizeCutoff = 0;
@@ -79,7 +76,7 @@ public class PrizePayoutApp {
         scanner.close();
     }
 
-    private static double CalcPot(int players, double entryPrice, double minPrize, double extraPrize, double baseCost, double perPlayerCost, boolean thresholdRounding, double maxRound) {
+    private static double calcPot(int players, double entryPrice, double minPrize, double extraPrize, double baseCost, double perPlayerCost, boolean thresholdRounding, double maxRound) {
         double pot = (extraPrize - baseCost) + players * (entryPrice - perPlayerCost);
         if(thresholdRounding) {
             if (pot >= 100 && pot < 1000) {
