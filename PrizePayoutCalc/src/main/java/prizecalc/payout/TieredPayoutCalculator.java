@@ -5,16 +5,18 @@ import java.util.*;
 public class TieredPayoutCalculator {
 
     private static final int[] TIERPLAYERCOUNTS = {1, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024};
+    private static final int[] TIERCUTOFFS = {1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024};
 
     public TieredPayoutCalculator() {
 
     }
 
-    public static double calculate(int prizeCutoff, double totalPrize) {
+    public static double calculate(double entryPrice, int totalPrize, int prizeCutoff, int curve, double egalitarianism) {
         // should each winner get a unique prize amount (0) or should ranks be divided into "tiers" with the same prize (1)?
         // // how large is the first prize tier?
         // should the total prize in each tier be roughly equal (0), favor the top few tiers like the top 8 (1), or vastly favor first place (2)?
         // given that curve, how egalitarian should the overall distribution be?
+
 
         // count required tiers
         int tierCount = 0;
@@ -33,73 +35,163 @@ public class TieredPayoutCalculator {
 
         tierCount = Arrays.binarySearch(TIERPLAYERCOUNTS, nextHighest) - 1;
 
-        List<Double> optimalTierRatios = new ArrayList<Double>(tierCount);
-        List<Double> optimalTierTotals = new ArrayList<Double>(tierCount);
 
-        // curve 0: share of total prize for each tier is equal (1/tier count)
-        for (int i = 0; i < tierCount; i++) {
-            optimalTierRatios.add(1.0/tierCount);
+        List<Integer> payoutTable = new ArrayList<Integer>(prizeCutoff);
+
+        // curve 1: share of total prize for each tier is linear
+        if(curve == 1) {
+            payoutTable = linearDistribution(tierCount, totalPrize, egalitarianism, entryPrice);
         }
-        // curve 1: share of total prize increases or is unchanged as the number of recipients increases for the first third of tiers, then decreases or is unchanged
-        // curve 2: share of total prize decreases or is unchanged in each tier
-
-        for (int i = 0; i < tierCount; i++) {
-            optimalTierTotals.add(optimalTierRatios.get(i) * totalPrize);
+        // curve 2: share of total prize increases as the number of recipients increases for the first third of tiers, then decreases
+        else if (curve == 2) {
+            payoutTable = curvedDistribution(tierCount, totalPrize, egalitarianism);
         }
 
-        /*int tierSize = 1;
-        if (place > 512) {
-            tierSize = 512;
-        } else if (place > 256) {
-            tierSize = 256;
-        } else if (place > 128) {
-            tierSize = 128;
-        } else if (place > 64) {
-            tierSize = 64;
-        } else if (place > 32) {
-            tierSize = 32;
-        } else if (place > 16) {
-            tierSize = 16;
-        } else if (place > 8) {
-            tierSize = 8;
-        } else if (place > 4) {
-            tierSize = 4;
-        } else if (place > 2) {
-            tierSize = 2;
+
+        return 0;
+    }
+
+    private static ArrayList<Integer> linearDistribution(int tierCount, int totalPrize, double egalitarianism, double entryPrice) {
+        if (tierCount <= 0 || egalitarianism < 0 || egalitarianism > 1) {
+            throw new IllegalArgumentException("Invalid input");
+        }
+
+        ArrayList<Double> optimalTierRatios = new ArrayList<>(tierCount);
+
+        // Interpolate bias factor for first place
+        //double biasFactor = (1.0 - egalitarianism) * (2.0 - 1.0 / 3.0) + 1.0 / 3.0;
+
+        // Effective minimum for last element
+        //double tailMin = Math.max(0.01, totalPrize/(entryPrice*0.1));
+
+        /*// Edge case: perfectly flat
+        if (egalitarianism == 1.0) {
+            double value = 1.0 / tierCount;
+            for (int i = 0; i < tierCount; i++) {
+                optimalTierRatios.add(value);
+            }
+        } else {
+            // Compute steepest allowed negative slope
+            double dMin = (0.01 - 1.0 / tierCount) * 2 / (tierCount - 1); // derived from sum constraint and min tail
+
+            // Interpolate slope based on flatness
+            double d = dMin * (1.0 - egalitarianism);
+
+            // Compute starting value a such that sum = 1
+            double a = (1.0 - d * (tierCount - 1) * tierCount / 2.0) / tierCount;
+
+            // Generate series
+            for (int i = 0; i < tierCount; i++) {
+                double value = a + i * d;
+                optimalTierRatios.add(value);
+            }
         }*/
+
+        // Let v₁ be the base value, and d the slope
+        // Total sum = v₀ + sum_{i=1}^{n-1} (v₁ + (i - 1) * d)
+        //           = (1 + biasFactor) * v₁ + (n - 1) * v₁ + d * (n - 2)(n - 1)/2
+        //           = (n + biasFactor) * v₁ + d * (n - 2)(n - 1)/2 = 1
+    //Math.max(0.01, (entryPrice*0.1)/totalPrize)
+        double tailMin = Math.max(0.01, 0);
+
+        // head multipliers at extremes
+        double H0 = 2.0;             // at egalitarianism=0
+        double H1 = 4.0 / 3.0;       // at egalitarianism=1
+        double H  = H1 + (1 - egalitarianism) * (H0 - H1);
+
+        // solve extreme-steep (e=0) base value b0 and slope d0
+        // sum = (H0 + n-1)*b0 + d0*(n-2)*(n-1)/2 = 1
+        // tail = b0 + (n-2)*d0 = tailMin
+        // ⇒ b0 = (2 - tailMin*(n-1)) / (n+5)
+        double b0 = (2.0 - tailMin * (tierCount - 1)) / (tierCount + 5.0);
+        double d0 = (tailMin - b0) / (tierCount - 2.0);
+
+        // interpolate slope for given egalitarianism
+        double d = d0 * (1 - egalitarianism);
+
+        // now solve b for general e:
+        // (H + n-1)*b + d*(n-2)*(n-1)/2 = 1
+        double slopeWeight = (tierCount - 2.0) * (tierCount - 1.0) / 2.0;
+        double denom       = H + (tierCount - 1.0);
+        double b           = (1.0 - d * slopeWeight) / denom;
+
+        // assemble series
+        //ArrayList<Double> series = new ArrayList<>(tierCount);
+        optimalTierRatios.add(H * b);                // first
+        optimalTierRatios.add(b);                    // second
+        for (int k = 2; k < tierCount; k++) {
+            optimalTierRatios.add(b + (k - 1) * d);
+        }
+        for(int j = 0; j < optimalTierRatios.size(); j++) {
+            System.out.println(optimalTierRatios.get(j));
+        }
+
         int place = 1;
-        List<Double> payoutTable = new ArrayList<Double>(prizeCutoff);
+        List<Integer> optimalTierTotals = new ArrayList<Integer>(tierCount);
+        ArrayList<Integer> finalTable = new ArrayList<Integer>(tierCount);
+        for (int i = 0; i < tierCount; i++) {
+            optimalTierTotals.add((int) Math.round(optimalTierRatios.get(i) * totalPrize));
+        }
         for (int tier = 0; tier < tierCount; tier++) {
             for (int i = 0; i < TIERPLAYERCOUNTS[tier]; i++) {
-                payoutTable.add(optimalTierTotals.get(tier) / TIERPLAYERCOUNTS[tier]);
+                finalTable.add(optimalTierTotals.get(tier) / TIERPLAYERCOUNTS[tier]);
                 System.out.println(place + ": " + optimalTierTotals.get(tier) / TIERPLAYERCOUNTS[tier]);
                 place++;
             }
         }
-        return 0;
+        return finalTable;
+    }
+
+    private static ArrayList<Integer> curvedDistribution(int tierCount, int totalPrize, double egalitarianism) {
+        List<Double> tempPayouts = new ArrayList<Double>();
+        ArrayList<Integer> finalTable = new ArrayList<Integer>(tierCount);
+        double exponent = 1.5 - egalitarianism;
+        double sum = 0;
+        for (int i = 0; i < tierCount; i++) {
+            double coefficient = (7.15e-7)*totalPrize*totalPrize+0.04*totalPrize+320;
+            double value = coefficient * Math.pow(TIERCUTOFFS[i]+0.5, -exponent);
+            for(int g = 0; g < TIERPLAYERCOUNTS[i]; g++) {
+                tempPayouts.add(value);
+                sum += value;
+                //System.out.println(r);
+            }
+        }
+        int place = 1;
+        //System.out.println("\n" + sum + "\n");
+        for (int i = 0; i < tempPayouts.size(); i++) {
+        /*for (int tier = 0; tier < tierCount; tier++) {
+            for (int i = 0; i < TIERPLAYERCOUNTS[tier]; i++) {*/
+                finalTable.add((int) Math.round(tempPayouts.get(i) / sum * totalPrize)); // ensure values total to totalPrize
+                System.out.println(place + ": " + finalTable.get(i));
+                place++;
+        //    }
+        }
+        return finalTable;
     }
 
     // returns a score of how "not round" the given number is.
-    private static int ugliness(double number) {
-        String numString = Double.toString(number);
-        numString = numString.replace(".", "");
-
-        int index = numString.length() - 1;
-
-        // Iterate from the end of the string, removing '0' characters
-        while (index >= 0 && numString.charAt(index) == '0') {
-            index--;
+    private static int ugliness(long x) {
+        int zeros = 0;
+        while (x % 10 == 0 && x > 0) {
+            x /= 10;
+            zeros++;
         }
+        int prefix = (int)x;
+        int digits = (int)Math.log10(prefix) + 1;
 
-        // Return the substring up to the first non-zero character (or an empty string if all zeros)
-        String prefix = numString.substring(0, index + 1);
-
-        if (Integer.parseInt(prefix) % 5 == 0) { // leading non-zero digits are a multiple of 5
-            return prefix.length();
-        } else if (index < prefix.length() - 1) { // did we remove at least one zero? if so, is a multiple of 5 when returned
-            return prefix.length()+1;
-        } else {
-            return numString.length(); // the number is not a multiple of 5
+        // If prefix is a multiple of 5, it’s “clean”
+        if (prefix % 5 == 0) {
+            return digits;
         }
+        // If we removed at least one zero, that counts as “almost” clean
+        if (zeros > 0) {
+            return digits + 1;
+        }
+        // No zeros removed, prefix not multiple of 5 – worst score
+        return digits + 1;
     }
+
 }/*That step would likely be made up of, starting from the smallest payout (lowest placements), changing them to the next roundest number in that direction and comparing the new total to the true prize pool. Repeat for each tier and then pick the one with the most roundness that moved closer to the prize pool or, if none of them got closer, repeat with the same initial table but with a */
+
+// error threshold percentage (user defined) instead of zero option. Err on the side of going over, maybe negative to positive slider, perhaps asymmetrical
+// bottom payout should be no lower than 1% of the total pot, and no lower than the entry fee

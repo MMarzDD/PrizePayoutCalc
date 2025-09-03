@@ -32,25 +32,25 @@ public class PrizePayoutApp {
             System.out.print("Enter logistics costs per player: ");
             double perPlayerCost = readPositiveDouble(scanner);
 
-            int potGrowth = 2;
-            while(potGrowth == 2) {
-                System.out.print("Should the pot grow per-player (0), or at round thresholds (1)? ");
+            int potGrowth = 0;
+            while(potGrowth == 0) {
+                System.out.print("Should the pot grow per-player (1), or at round thresholds (2)? ");
                 int input = readPositiveInt(scanner);
-                if (input == 0 || input == 1) {
+                if (input == 1 || input == 2) {
                     potGrowth = input;
                 } else {
-                    System.out.println("Input error: please enter 0 or 1.");
+                    System.out.println("Input error: please enter 1 or 2.");
                 }
             }
             boolean thresholdRounding = false;
             double maxRound = 0;
-            if(potGrowth == 1) {
+            if(potGrowth == 2) {
                 thresholdRounding = true;
                 System.out.print("Enter the maximum amount to round up the pot size (after entry fees and costs are calculated): ");
                 maxRound = readPositiveDouble(scanner);
             }
 
-            double totalPrize = calcPot(playerCount, entryPrice, minPrize, extraPrize, baseCost, perPlayerCost, thresholdRounding, maxRound);
+            int totalPrize = calcPot(playerCount, entryPrice, minPrize, extraPrize, baseCost, perPlayerCost, thresholdRounding, maxRound);
             System.out.println("Total pot: $" + totalPrize + "\n");
 
             int prizeCutoff = 0;
@@ -65,7 +65,29 @@ public class PrizePayoutApp {
                 }
             }
 
-            double payout = TieredPayoutCalculator.calculate(prizeCutoff, totalPrize);
+            int curve = 0;
+            while(curve == 0) {
+                System.out.print("Should the total payout in each tier be distributed roughly linearly (1), or more heavily favor the top placements (2)? ");
+                int input = readPositiveInt(scanner);
+                if (input == 1 || input == 2) {
+                    curve = input;
+                } else {
+                    System.out.println("Input error: please enter 1 or 2.");
+                }
+            }
+
+            double egalitarianism = -1;
+            while(egalitarianism == -1) {
+                System.out.print("How evenly should the payouts be distributed from 0 to 1? (0 is highly competitive, 1 is very fair. Decimals are ok) ");
+                double input = readPositiveDouble(scanner);
+                if (input >= 0 && input <= 1) {
+                    egalitarianism = input;
+                } else {
+                    System.out.println("Input error: please enter a value between 0 and 1 inclusive (decimals are valid).");
+                }
+            }
+
+            double payout = TieredPayoutCalculator.calculate(entryPrice, totalPrize, prizeCutoff, curve, egalitarianism);
             System.out.printf("Calculated payout: $%.2f%n", payout);
 
             System.out.print("Would you like to calculate again? (y/n): ");
@@ -76,7 +98,7 @@ public class PrizePayoutApp {
         scanner.close();
     }
 
-    private static double calcPot(int players, double entryPrice, double minPrize, double extraPrize, double baseCost, double perPlayerCost, boolean thresholdRounding, double maxRound) {
+    private static int calcPot(int players, double entryPrice, double minPrize, double extraPrize, double baseCost, double perPlayerCost, boolean thresholdRounding, double maxRound) {
         double pot = (extraPrize - baseCost) + players * (entryPrice - perPlayerCost);
         if(thresholdRounding) {
             if (pot >= 100 && pot < 1000) {
@@ -90,7 +112,7 @@ public class PrizePayoutApp {
         if (pot < minPrize) {
             pot = minPrize;
         }
-        return Math.round(pot * 100.0) / 100.0;
+        return (int) Math.round(pot);
     }
 
     private static String ordinal(int i) {
