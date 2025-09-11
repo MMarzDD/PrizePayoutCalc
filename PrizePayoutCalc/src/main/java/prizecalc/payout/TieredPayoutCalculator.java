@@ -1,11 +1,12 @@
 package prizecalc.payout;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class TieredPayoutCalculator {
 
     private static final int[] TIERPLAYERCOUNTS = {1, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024};
-    private static final int[] TIERCUTOFFS = {1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024};
+    private static final int[] TIERCUTOFFS = {1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048};
 
     public TieredPayoutCalculator() {
 
@@ -36,17 +37,21 @@ public class TieredPayoutCalculator {
         tierCount = Arrays.binarySearch(TIERPLAYERCOUNTS, nextHighest) - 1;
 
 
-        List<Integer> payoutTable = new ArrayList<Integer>(prizeCutoff);
+        List<Integer> idealPayoutTable = new ArrayList<Integer>(prizeCutoff);
 
         // curve 1: share of total prize for each tier is linear
         if(curve == 1) {
-            payoutTable = linearDistribution(tierCount, totalPrize, egalitarianism, entryPrice);
+            idealPayoutTable = linearDistribution(tierCount, totalPrize, egalitarianism, entryPrice);
         }
         // curve 2: share of total prize increases as the number of recipients increases for the first third of tiers, then decreases
         else if (curve == 2) {
-            payoutTable = curvedDistribution(tierCount, totalPrize, egalitarianism);
+            idealPayoutTable = curvedDistribution(tierCount, totalPrize, egalitarianism);
         }
 
+        List<Integer> finalPayoutTable = RoundPayouts(idealPayoutTable);
+        for (int i = 0; i < finalPayoutTable.size(); i++) {
+            System.out.println(i + ": " + finalPayoutTable.get(i));
+        }
 
         return 0;
     }
@@ -57,41 +62,6 @@ public class TieredPayoutCalculator {
         }
 
         ArrayList<Double> optimalTierRatios = new ArrayList<>(tierCount);
-
-        // Interpolate bias factor for first place
-        //double biasFactor = (1.0 - egalitarianism) * (2.0 - 1.0 / 3.0) + 1.0 / 3.0;
-
-        // Effective minimum for last element
-        //double tailMin = Math.max(0.01, totalPrize/(entryPrice*0.1));
-
-        /*// Edge case: perfectly flat
-        if (egalitarianism == 1.0) {
-            double value = 1.0 / tierCount;
-            for (int i = 0; i < tierCount; i++) {
-                optimalTierRatios.add(value);
-            }
-        } else {
-            // Compute steepest allowed negative slope
-            double dMin = (0.01 - 1.0 / tierCount) * 2 / (tierCount - 1); // derived from sum constraint and min tail
-
-            // Interpolate slope based on flatness
-            double d = dMin * (1.0 - egalitarianism);
-
-            // Compute starting value a such that sum = 1
-            double a = (1.0 - d * (tierCount - 1) * tierCount / 2.0) / tierCount;
-
-            // Generate series
-            for (int i = 0; i < tierCount; i++) {
-                double value = a + i * d;
-                optimalTierRatios.add(value);
-            }
-        }*/
-
-        // Let v₁ be the base value, and d the slope
-        // Total sum = v₀ + sum_{i=1}^{n-1} (v₁ + (i - 1) * d)
-        //           = (1 + biasFactor) * v₁ + (n - 1) * v₁ + d * (n - 2)(n - 1)/2
-        //           = (n + biasFactor) * v₁ + d * (n - 2)(n - 1)/2 = 1
-    //Math.max(0.01, (entryPrice*0.1)/totalPrize)
         double tailMin = Math.max(0.01, 0);
 
         // head multipliers at extremes
@@ -169,8 +139,69 @@ public class TieredPayoutCalculator {
         return finalTable;
     }
 
+    private static List<Integer> RoundPayouts(List<Integer> idealPayouts) {
+        List<Integer> rounded = new ArrayList<>();
+
+        for (int ideal : idealPayouts) {
+            List<Integer> candidates = generateRoundCandidates(ideal);
+
+            int best = ideal;
+            int bestUg = ugliness(ideal);
+            int bestDist = 0;
+
+            for (int cand : candidates) {
+                int ug = ugliness(cand);
+                int dist = Math.abs(cand - ideal);
+
+                if (ug < bestUg || (ug == bestUg && dist < bestDist)) {
+                    best = cand;
+                    bestUg = ug;
+                    bestDist = dist;
+                }
+            }
+
+            rounded.add(best);
+        }
+
+        return rounded;
+    }
+
+    private static List<Integer> generateRoundCandidates(int ideal) {
+        List<Integer> cands = new ArrayList<>();
+        String s = Integer.toString(ideal);
+        int digits = s.length();
+
+        // For each possible trailing‐zero count
+        for (int k = 0; k < digits; k++) {
+            int factor = pow10(k);
+            int d = ideal / factor;
+
+            // 1) Nearest integer multiple of 1
+            cands.add((int) (Math.round((double)d) * factor));
+
+            // 2) Floor and ceil to nearest multiple of 5
+            int floor5 = (d / 5) * 5;
+            int ceil5  = ((d + 4) / 5) * 5;
+            cands.add(floor5 * factor);
+            cands.add(ceil5  * factor);
+        }
+
+        // Dedupe & filter positives
+        return cands.stream()
+                .filter(x -> x > 0)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    private static int pow10(int k) {
+        int r = 1;
+        while (k-- > 0) r *= 10;
+        return r;
+    }
+
+
     // returns a score of how "not round" the given number is.
-    private static int ugliness(long x) {
+    private static int ugliness(int x) {
         int zeros = 0;
         while (x % 10 == 0 && x > 0) {
             x /= 10;
